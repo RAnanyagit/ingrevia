@@ -1,26 +1,11 @@
-import { useState, useEffect } from "react";
+import { useContext } from "react";
+import { AllergyContext } from "./context/AllergyContext";
 import { useNavigate } from "react-router-dom";
 import "./App.css";
 
 function Profile({ user }) {
-  const [allergies, setAllergies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { allergies, loading } = useContext(AllergyContext);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    async function fetchAllergies() {
-      try {
-        const res = await fetch(`https://ingrevia-api.onrender.com/get-allergies?user_email=${user}`);
-        const data = await res.json();
-        setAllergies(data);
-      } catch (err) {
-        console.error("Failed to fetch allergies:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchAllergies();
-  }, [user]);
 
   return (
     <div className="page-container" style={{ animation: "fadeIn 0.5s ease-out" }}>
@@ -31,32 +16,42 @@ function Profile({ user }) {
         Back to Dashboard
       </button>
 
-      <header className="page-header">
+      <header className="page-header hero-mini">
         <h1>User Profile</h1>
-        <p>Manage your account settings and personal allergy profile.</p>
+        <p>Manage your account settings and personalized allergy profile.</p>
       </header>
 
-      <div className="glass-panel profile-grid">
-        <div className="profile-section">
-          <h3><span>👤</span> Account Details</h3>
-          <div className="info-group">
-            <div className="info-label">Email Address</div>
-            <div className="info-value">{user}</div>
+      <div className="profile-layout">
+        <div className="glass-panel profile-card info-card">
+          <div className="card-badge">ACCOUNT</div>
+          <h3><span>👤</span> Personal Info</h3>
+          <div className="info-item">
+            <label>Email Address</label>
+            <div className="value">{user}</div>
+          </div>
+          <div className="info-item">
+            <label>Member Since</label>
+            <div className="value">March 2024</div>
           </div>
         </div>
 
-        <div className="profile-section">
+        <div className="glass-panel profile-card allergy-card">
+          <div className="card-badge highlight">PROTECTION</div>
           <h3><span>🛡️</span> My Allergies</h3>
+          <p className="section-hint">Ingredients we flag for your safety:</p>
           {loading ? (
-            <div className="spinner"></div>
+            <div className="spinner-container"><div className="spinner"></div></div>
           ) : (
-            <div className="allergy-list">
+            <div className="allergy-tag-container">
               {allergies.length > 0 ? (
                 allergies.map((allergy, i) => (
-                  <span key={i} className="allergy-tag">{allergy}</span>
+                  <span key={i} className="premium-tag">{allergy}</span>
                 ))
               ) : (
-                <p className="no-data">No allergies saved yet.</p>
+                <div className="empty-state">
+                  <p>No allergies saved yet.</p>
+                  <button className="btn-secondary">Add Allergies</button>
+                </div>
               )}
             </div>
           )}

@@ -10,7 +10,7 @@ class AnalysisLogResponse(BaseModel):
     timestamp: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class IngredientListRequest(BaseModel):
     ingredients: str

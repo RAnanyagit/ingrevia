@@ -1,135 +1,184 @@
-import { useState, useEffect } from "react";
-import "./App.css";
+import { useState, useEffect, useContext, useMemo } from "react";
+import { API_URL } from "./config";
+import { CartContext } from "./context/CartContext";
+import ProductGrid from "./components/ProductGrid";
+import Loader from "./components/Loader";
+import AllergyImpactSummary from "./components/AllergyImpactSummary";
 
 function Dashboard({ user }) {
-  const [ingredients, setIngredients] = useState("");
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [allProducts, setAllProducts] = useState([]);
+  const [fetchingProducts, setFetchingProducts] = useState(true);
+  const [sortOrder, setSortOrder] = useState("recommended");
+  const [safeOnly, setSafeOnly] = useState(false);
+  const [ingredientsInput, setIngredientsInput] = useState("");
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const { addToCart } = useContext(CartContext);
+
+  useEffect(() => {
+    const fetchDiscoveryData = async () => {
+      try {
+        const response = await fetch(`${API_URL}/products-with-risk?user_email=${user}`);
+        const data = await response.json();
+        if (response.ok) {
+          setAllProducts(data);
+        }
+      } catch (err) {
+        console.error("Discovery fetch failed", err);
+      } finally {
+        setFetchingProducts(false);
+      }
+    };
+    fetchDiscoveryData();
+  }, [user]);
 
   const analyzeIngredients = async () => {
-    if (!ingredients.trim()) return;
-    
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    if (!ingredientsInput.trim()) return;
+    setAnalyzing(true);
+    setAnalysisResult(null);
 
     try {
-      const response = await fetch(
-        "https://ingrevia-api.onrender.com/analyze-list",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ 
-            ingredients,
-            user_email: user
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch analysis");
-      }
-
+      const response = await fetch(`${API_URL}/analyze-list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ingredients: ingredientsInput, user_email: user }),
+      });
       const data = await response.json();
-      setResult(data);
+      setAnalysisResult(data);
     } catch (error) {
-      console.error("Error:", error);
-      setError("An error occurred while analyzing the ingredients. Please try again.");
+      console.error("Analysis failed", error);
     } finally {
-      setLoading(false);
+      setAnalyzing(false);
     }
   };
 
-  const getRiskColor = (category) => {
-    switch (category?.toLowerCase()) {
-      case "low": return "var(--risk-low)";
-      case "moderate":
-      case "medium": return "var(--risk-medium)";
-      case "high": return "var(--risk-high)";
-      default: return "var(--text-muted)";
+  const processedProducts = useMemo(() => {
+    let list = [...allProducts];
+    if (safeOnly) {
+      list = list.filter(p => p.risk === "Low" || p.risk === "Moderate");
     }
-  };
 
-  const getRiskClass = (category) => {
-    switch (category?.toLowerCase()) {
-      case "low": return "low";
-      case "moderate":
-      case "medium": return "medium";
-      case "high": return "high";
-      default: return "low";
+    if (sortOrder === "price") {
+      list.sort((a, b) => a.price - b.price);
+    } else if (sortOrder === "risk") {
+      const order = { "Low": 0, "Moderate": 1, "High": 2, "Critical": 3 };
+      list.sort((a, b) => order[a.risk] - order[b.risk]);
+    } else {
+      list.sort((a, b) => (b.score || 0) - (a.score || 0));
     }
-  };
+    return list;
+  }, [allProducts, sortOrder, safeOnly]);
+
+  const recommended = processedProducts.slice(0, 5);
+  const safeProducts = processedProducts.filter(p => p.risk === "Low").slice(0, 5);
+  const trending = processedProducts.reverse().slice(0, 5); // Just a demo "Trending"
 
   return (
-    <div className="page-container" style={{ animation: "fadeIn 0.5s ease-out" }}>
-      <header className="page-header">
-        <h1>Ingredient Analysis</h1>
-        <p>Personalized safety assessment for your cosmetic products.</p>
-      </header>
+    <div className="bg-gray-100 min-h-screen text-gray-900 pb-20">
+      
+      {/* 🚀 Amazon-Style Hero Section (Quick Analysis Tool) */}
+      <div className="bg-[#232f3e] text-white py-12 px-6 flex flex-col items-center">
+        <h1 className="text-3xl font-bold mb-2">Ingrevia <span className="text-yellow-400">Discovery</span></h1>
+        <p className="text-gray-300 text-lg mb-8 max-w-2xl text-center">
+          Analyze ingredients on the fly or discover products curated to your specific allergy profile.
+        </p>
+        
+        <div className="w-full max-w-4xl bg-white p-6 rounded-xl shadow-2xl text-gray-800 flex flex-col md:flex-row gap-4">
+          <textarea
+            className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            rows="3"
+            placeholder="Paste ingredient list here (e.g. Water, Glycerin, Parabens)..."
+            value={ingredientsInput}
+            onChange={(e) => setIngredientsInput(e.target.value)}
+          />
+          <button 
+            onClick={analyzeIngredients}
+            disabled={analyzing}
+            className="bg-yellow-400 hover:bg-yellow-500 font-bold py-3 px-8 rounded-lg transition-colors min-w-[160px]"
+          >
+            {analyzing ? "Analyzing..." : "Quick Analyze"}
+          </button>
+        </div>
 
-      <div className="glass-panel input-section">
-        <label htmlFor="ingredients-input">Paste Ingredients List</label>
-        <textarea
-          id="ingredients-input"
-          placeholder="e.g. Water, Glycerin, Niacinamide, Parabens..."
-          value={ingredients}
-          onChange={(e) => setIngredients(e.target.value)}
-        />
-        {error && <p className="error-text">{error}</p>}
-        <button 
-          className="btn-primary" 
-          onClick={analyzeIngredients}
-          disabled={loading || !ingredients.trim()}
-        >
-          {loading ? <><span className="spinner"></span> Analyzing...</> : "Analyze Product"}
-        </button>
+        {analysisResult && (
+          <div className="mt-8 bg-blue-50 border-l-4 border-blue-400 p-4 rounded text-blue-900 max-w-4xl w-full animate-fade-in shadow-lg">
+            <h3 className="font-bold">⚡ Risk Category: {analysisResult.product_analysis.overall_risk_category}</h3>
+            <p className="text-sm opacity-90">{analysisResult.product_analysis.analysis_reasoning}</p>
+          </div>
+        )}
       </div>
 
-      {result && (
-        <div style={{ animation: "fadeIn 0.5s ease" }}>
-          <div className="dashboard-section glass-panel">
-            <div className="score-card">
-              <div className="score-glow" style={{ background: getRiskColor(result.product_analysis.overall_risk_category) }}></div>
-              <span className="score-label">Risk Score</span>
-              <div className="score-value" style={{ color: getRiskColor(result.product_analysis.overall_risk_category) }}>
-                {parseFloat(result.product_analysis.overall_weighted_risk_score).toFixed(1)}
-              </div>
-              <div className="score-category" style={{ color: getRiskColor(result.product_analysis.overall_risk_category) }}>
-                {result.product_analysis.overall_risk_category} Risk
-              </div>
-            </div>
-            <div className="reason-card">
-              <h3><span>📊</span> Analysis Breakdown</h3>
-              <p>{result.product_analysis.analysis_reasoning}</p>
-            </div>
+      <div className="max-w-7xl mx-auto px-6 mt-10">
+        
+        {/* 🎛️ Filter Bar (Amazon-inspired) */}
+        <div className="flex flex-wrap gap-6 items-center mb-10 bg-white p-4 rounded-xl shadow flex-row justify-between border border-gray-200">
+          <div className="flex gap-4 items-center">
+            <span className="text-sm font-bold text-gray-500 uppercase tracking-widest">Sort By:</span>
+            <select
+              onChange={(e) => setSortOrder(e.target.value)}
+              value={sortOrder}
+              className="border border-gray-300 bg-gray-50 px-4 py-2 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:outline-none text-sm font-medium"
+            >
+              <option value="recommended">Best Recommended</option>
+              <option value="risk">Low to High Risk</option>
+              <option value="price">Lowest Price</option>
+            </select>
           </div>
 
-          <div className="ingredients-section">
-            <div className="ingredients-header">
-              <h3><span>🧊</span> Identified Ingredients</h3>
-              <span className="ingredients-count">{result.recognized_ingredients?.length || 0} found</span>
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={safeOnly}
+                onChange={() => setSafeOnly(!safeOnly)}
+              />
+              <div className={`w-10 h-6 rounded-full transition-colors ${safeOnly ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+              <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform ${safeOnly ? 'translate-x-4' : ''}`}></div>
             </div>
-            <div className="cards-grid">
-              {result.recognized_ingredients?.map((item, index) => {
-                const riskLvl = getRiskClass(item.regulatory_status);
-                return (
-                  <div key={index} className={`ingredient-card card-${riskLvl}`}>
-                    <div className="ingredient-title-row">
-                      <div className="ingredient-name">{item.name}</div>
-                      <div className={`badge badge-${riskLvl}`}>{item.regulatory_status || "Unknown"}</div>
-                    </div>
-                    {item.description && <div className="ingredient-desc">{item.description}</div>}
-                    <div className="ingredient-status">{item.regulatory_status}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+            <span className="text-sm font-bold text-gray-700 group-hover:text-green-600 transition-colors">Safe Products Only</span>
+          </label>
         </div>
-      )}
+
+        {fetchingProducts ? (
+          <Loader />
+        ) : (
+          <div className="space-y-12">
+            
+            {/* 🧠 Smart Summary Widget */}
+            <div className="mb-12">
+              <AllergyImpactSummary products={allProducts} />
+            </div>
+
+            <section className="animate-fade-up">
+              <div className="flex items-center gap-4 mb-6">
+                <h1 className="text-2xl font-bold border-b-4 border-yellow-400 pb-1">Recommended for You</h1>
+                <div className="h-[1px] flex-1 bg-gray-200"></div>
+              </div>
+              <ProductGrid products={recommended} onAddToCart={addToCart} />
+            </section>
+
+            <section className="animate-fade-up delay-100">
+              <div className="flex items-center gap-4 mb-6">
+                <h1 className="text-2xl font-bold border-b-4 border-green-400 pb-1">Safe & Natural Picks</h1>
+                <div className="h-[1px] flex-1 bg-gray-200"></div>
+              </div>
+              <ProductGrid products={safeProducts} onAddToCart={addToCart} />
+            </section>
+
+            <section className="animate-fade-up delay-200">
+              <div className="flex items-center gap-4 mb-6">
+                <h1 className="text-2xl font-bold border-b-4 border-blue-400 pb-1">Trending Discovery</h1>
+                <div className="h-[1px] flex-1 bg-gray-200"></div>
+              </div>
+              <ProductGrid products={trending} onAddToCart={addToCart} />
+            </section>
+
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
